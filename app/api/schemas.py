@@ -67,3 +67,24 @@ class PostOut(PostBase):
     id: int
     published_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- NewsItem ----------
+class NewsItemOut(BaseModel):
+    id: int
+    title: str
+    url: Optional[str] = None
+    summary: Optional[str] = None
+    source: Optional[str] = None
+    published_at: Optional[datetime] = None
+    raw_text: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Parser response ----------
+class ParseResult(BaseModel):
+    sources_processed: int
+    items_found: int
+    items_saved: int
+    duplicates_skipped: int
+    errors: int

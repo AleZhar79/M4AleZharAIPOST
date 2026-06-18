@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Keyword, Post, Source
+from app.models import Keyword, NewsItem, Post, Source
 from app.api import schemas
+from app.news_parser.service import run_parsing
 
 router = APIRouter()
 
@@ -145,3 +146,32 @@ def delete_post(post_id: int, db: Session = Depends(get_db)):
     db.delete(obj)
     db.commit()
     return None
+
+
+# ==================== NEWS (read-only) ====================
+@router.get("/news/", response_model=List[schemas.NewsItemOut], tags=["news"])
+def list_news(limit: int = 50, db: Session = Depends(get_db)):
+    return (
+        db.query(NewsItem)
+        .order_by(NewsItem.published_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.get("/news/{news_id}", response_model=schemas.NewsItemOut, tags=["news"])
+def get_news(news_id: int, db: Session = Depends(get_db)):
+    obj = db.query(NewsItem).get(news_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="News not found")
+    return obj
+
+
+# ==================== PARSING (ручной запуск) ====================
+@router.post("/parse/run", response_model=schemas.ParseResult, tags=["parser"])
+def parse_now(db: Session = Depends(get_db)):
+    """
+    Запускает парсинг прямо сейчас (синхронно).
+    В Блоке 3 этот же код будет дёргать Celery по расписанию.
+    """
+    return run_parsing(db)
