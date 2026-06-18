@@ -7,6 +7,8 @@ from app.database import get_db
 from app.models import Keyword, NewsItem, Post, Source
 from app.api import schemas
 from app.news_parser.service import run_parsing
+from app.ai.generator import generate_post_text
+from app.telegram.publisher import publish_post as publisher_publish_post
 
 router = APIRouter()
 
@@ -175,3 +177,37 @@ def parse_now(db: Session = Depends(get_db)):
     В Блоке 3 этот же код будет дёргать Celery по расписанию.
     """
     return run_parsing(db)
+
+
+# ==================== AI GENERATION (Блок 4, mock) ====================
+@router.post("/generate/{news_id}", response_model=schemas.PostOut, tags=["generate"])
+def generate_for_news(news_id: int, db: Session = Depends(get_db)):
+    """
+    Генерирует пост для конкретной новости и сохраняет в Post.
+    Сейчас под капотом mock OpenAI — текст всегда одинаковый.
+    """
+    news = db.query(NewsItem).get(news_id)
+    if not news:
+        raise HTTPException(status_code=404, detail="News not found")
+
+    text = generate_post_text(news)
+    post = Post(news_id=news.id, generated_text=text, status="generated")
+    db.add(post)
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+# ==================== PUBLISH (Блок 5, mock) ====================
+@router.post("/publish/{post_id}", response_model=schemas.PostOut, tags=["publish"])
+def publish_post_endpoint(post_id: int, db: Session = Depends(get_db)):
+    """
+    Публикует пост в Telegram-канал.
+    Сейчас под капотом mock — сообщение печатается в консоль uvicorn.
+    """
+    post = db.query(Post).get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    publisher_publish_post(db, post)
+    db.refresh(post)
+    return post
