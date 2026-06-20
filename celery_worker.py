@@ -1,45 +1,43 @@
 """
-БЛОК 3 — точка входа Celery-воркера (СКЕЛЕТ).
+Точка входа Celery-воркера.
 
-Сейчас Celery НЕ подключён — файл-плейсхолдер.
-Запускать его пока не нужно, потому что Redis не требуется и таски в app/tasks.py
-работают как обычные функции.
+Здесь создаётся экземпляр Celery-приложения с настроенным брокером (Redis)
+и расписанием Celery Beat.
 
-КОГДА БУДЕМ ДЕЛАТЬ БЛОК 3 ВСЕРЬЁЗ:
-1. Добавим в requirements.txt: celery==5.4.0  redis==5.0.8
-2. Раскомментируем код ниже.
-3. Запустим воркер:
-       celery -A celery_worker.celery_app worker --loglevel=info --pool=solo
-   (флаг --pool=solo нужен на Windows)
-4. Запустим Celery Beat (планировщик) отдельно:
-       celery -A celery_worker.celery_app beat --loglevel=info
+Запуск на Windows:
+    celery -A celery_worker.celery_app worker --loglevel=info --pool=solo
+    celery -A celery_worker.celery_app beat   --loglevel=info
+
+(в двух отдельных терминалах, оба с активированным venv)
 """
+from celery import Celery
+from celery.schedules import crontab
 
-# ============================================================
-# Раскомментировать в Блоке 3
-# ============================================================
-# from celery import Celery
-# from celery.schedules import crontab
-#
-# from app.config import settings
-#
-# celery_app = Celery(
-#     "aibot",
-#     broker=settings.redis_url,
-#     backend=settings.redis_url,
-#     include=["app.tasks"],
-# )
-#
-# celery_app.conf.beat_schedule = {
-#     "parse-every-30-minutes": {
-#         "task": "app.tasks.parse_all_sources_task",
-#         "schedule": crontab(minute="*/30"),
-#     },
-# }
-# celery_app.conf.timezone = "UTC"
+from app.config import settings
+
+celery_app = Celery(
+    "aibot",
+    broker=settings.redis_url,
+    backend=settings.redis_url,
+    include=["app.tasks"],
+)
+
+# Расписание Celery Beat: парсим все источники каждые 30 минут.
+celery_app.conf.beat_schedule = {
+    "parse-every-30-minutes": {
+        "task": "app.tasks.parse_all_sources_task",
+        "schedule": crontab(minute="*/30"),
+    },
+}
+celery_app.conf.timezone = "UTC"
+
+# Защита от слишком долгих тасков (если RSS-сайт «висит»)
+celery_app.conf.task_soft_time_limit = 60   # секунд
+celery_app.conf.task_time_limit = 90
+
 
 if __name__ == "__main__":
     print(
-        "[celery_worker] Заглушка. Celery ещё не подключён — это будет в Блоке 3.\n"
-        "Пока запускай только FastAPI: uvicorn app.main:app --reload"
+        "Celery-приложение создано. Запускай воркер командой:\n"
+        "  celery -A celery_worker.celery_app worker --loglevel=info --pool=solo"
     )

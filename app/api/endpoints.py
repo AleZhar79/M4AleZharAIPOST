@@ -169,14 +169,45 @@ def get_news(news_id: int, db: Session = Depends(get_db)):
     return obj
 
 
-# ==================== PARSING (ручной запуск) ====================
+# ==================== PARSING ====================
 @router.post("/parse/run", response_model=schemas.ParseResult, tags=["parser"])
 def parse_now(db: Session = Depends(get_db)):
     """
-    Запускает парсинг прямо сейчас (синхронно).
-    В Блоке 3 этот же код будет дёргать Celery по расписанию.
+    Запускает парсинг ПРЯМО СЕЙЧАС, в текущем процессе FastAPI (синхронно).
+    Подходит для отладки. Для прода используй /parse/run-async.
     """
     return run_parsing(db)
+
+
+@router.post("/parse/run-async", response_model=schemas.TaskScheduled, tags=["parser"])
+def parse_async():
+    """
+    Кладёт задание парсинга в очередь Celery и сразу возвращает task_id.
+    Реальный парсинг выполнит celery worker в отдельном процессе.
+    Узнать результат — через GET /api/tasks/{task_id}.
+    """
+    from app.tasks import parse_all_sources_task
+    async_result = parse_all_sources_task.apply_async()
+    return schemas.TaskScheduled(task_id=async_result.id)
+
+
+@router.get("/tasks/{task_id}", response_model=schemas.TaskStatus, tags=["parser"])
+def task_status(task_id: str):
+    """
+    Статус и результат Celery-таска по его id.
+    state: PENDING (ещё не начат / неизвестен) / STARTED / SUCCESS / FAILURE.
+    """
+    from celery_worker import celery_app
+    async_result = celery_app.AsyncResult(task_id)
+    result = None
+    if async_result.ready():
+        try:
+            result = async_result.result
+            if not isinstance(result, dict):
+                result = {"value": str(result)}
+        except Exception as e:
+            result = {"error": str(e)}
+    return schemas.TaskStatus(task_id=task_id, state=async_result.state, result=result)
 
 
 # ==================== AI GENERATION (Блок 4, mock) ====================

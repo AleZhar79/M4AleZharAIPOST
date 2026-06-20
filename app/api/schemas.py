@@ -88,3 +88,15 @@ class ParseResult(BaseModel):
     items_saved: int
     duplicates_skipped: int
     errors: int
+
+
+# ---------- Async task response ----------
+class TaskScheduled(BaseModel):
+    task_id: str
+    status: str = "queued"
+
+
+class TaskStatus(BaseModel):
+    task_id: str
+    state: str          # PENDING / STARTED / SUCCESS / FAILURE
+    result: Optional[dict] = None

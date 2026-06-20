@@ -1,51 +1,64 @@
 """
-БЛОК 3 — Celery-таски (СКЕЛЕТ / MOCK).
+Celery-таски проекта.
 
-Здесь будут фоновые задачи: парсинг, генерация постов, публикация.
-Пока — заглушки. Они НЕ требуют запущенного Redis и НЕ импортируют Celery.
-Это сделано специально, чтобы проект запускался без инфраструктуры.
+Главная задача — parse_all_sources_task. Она дёргает уже готовый run_parsing()
+из Блока 2. Это ключевая мысль: Celery — это просто способ запустить вашу
+обычную функцию в фоне. Сама бизнес-логика остаётся в одном месте.
 
-Когда дойдём до Блока 3 «по-настоящему»:
-1. Раскомментируем celery_app в celery_worker.py.
-2. Импортируем celery_app сюда.
-3. Заменим обычные функции на @celery_app.task.
-4. Добавим celery beat schedule для парсинга каждые 30 минут.
+Внутри таска мы создаём новую сессию БД через SessionLocal — потому что
+get_db() из FastAPI здесь не работает (это not зависимость FastAPI).
 """
+from celery_worker import celery_app
+from app.database import SessionLocal
+from app.news_parser.service import run_parsing
 from app.utils import get_logger
 
 log = get_logger(__name__)
 
 
-# --- Mock-таски (обычные функции, без Celery) ---
-
+@celery_app.task(name="app.tasks.parse_all_sources_task")
 def parse_all_sources_task() -> dict:
     """
-    Будущий Celery-таск: парсинг всех включённых источников по расписанию.
-    Сейчас просто пишет в лог.
+    Парсинг всех включённых источников.
+    Запускается:
+      - вручную через POST /api/parse/run-async
+      - автоматически Celery Beat'ом каждые 30 минут
     """
-    log.info("[MOCK TASK] parse_all_sources_task: парсинг будет здесь, после подключения Celery")
-    return {"status": "mock", "task": "parse_all_sources"}
+    log.info("[celery] parse_all_sources_task: старт")
+    db = SessionLocal()
+    try:
+        stats = run_parsing(db)
+        log.info(f"[celery] parse_all_sources_task: готово, stats={stats}")
+        return stats
+    finally:
+        db.close()
 
 
+@celery_app.task(name="app.tasks.generate_post_task")
 def generate_post_task(news_id: int) -> dict:
     """
-    Будущий Celery-таск: сгенерировать пост для конкретной новости через AI.
+    Заглушка-задача под Блок 4. Пока ничего не делает.
+    В Блоке 4 заменим тело на реальный вызов AI-генератора.
     """
-    log.info(f"[MOCK TASK] generate_post_task(news_id={news_id})")
-    return {"status": "mock", "task": "generate_post", "news_id": news_id}
+    log.info(f"[celery] generate_post_task(news_id={news_id}) — заглушка для Блока 4")
+    return {"status": "stub", "news_id": news_id}
 
 
+@celery_app.task(name="app.tasks.publish_post_task")
 def publish_post_task(post_id: int) -> dict:
     """
-    Будущий Celery-таск: опубликовать готовый пост в Telegram.
+    Заглушка-задача под Блок 5. Пока ничего не делает.
     """
-    log.info(f"[MOCK TASK] publish_post_task(post_id={post_id})")
-    return {"status": "mock", "task": "publish_post", "post_id": post_id}
+    log.info(f"[celery] publish_post_task(post_id={post_id}) — заглушка для Блока 5")
+    return {"status": "stub", "post_id": post_id}
 
 
+@celery_app.task(name="app.tasks.pipeline_task")
 def pipeline_task() -> dict:
     """
-    Будущая цепочка: парсинг → фильтрация → генерация → публикация.
+    Полная цепочка: парсинг → генерация → публикация.
+    Пока вызывает только парсинг. Достроим в Блоках 4–5.
     """
-    log.info("[MOCK TASK] pipeline_task: тут будет полная цепочка фоновой обработки")
-    return {"status": "mock", "task": "pipeline"}
+    log.info("[celery] pipeline_task: запускаю парсинг")
+    parse_all_sources_task.apply_async()
+    return {"status": "scheduled", "next": "parse_all_sources_task"}
