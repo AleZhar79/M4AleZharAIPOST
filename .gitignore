@@ -27,3 +27,13 @@ Thumbs.db
 
 # Логи
 *.log
+
+notepad .gitignore
+# Celery beat schedule
+celerybeat-schedule
+celerybeat-schedule.db
+
+# Telethon session — это доступ к твоему аккаунту, НИКОГДА не коммить
+tg_session.session
+*.session
+*.session-journal
