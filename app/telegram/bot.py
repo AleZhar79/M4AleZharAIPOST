@@ -19,6 +19,7 @@ Telethon работает от имени пользователя (user-account
     fetch_messages(channel, limit) -> list[dict]
     + send_message_mock / fetch_messages_mock — алиасы для обратной совместимости.
 """
+import asyncio
 from typing import Any, Dict, List
 
 from telethon.sync import TelegramClient
@@ -52,8 +53,24 @@ def _check_credentials() -> None:
         raise TelegramPublishError("Не заполнен TELEGRAM_CHANNEL в .env")
 
 
+def _ensure_event_loop() -> None:
+    """
+    Telethon внутри живёт на asyncio. Под капотом он ищет event loop в текущем потоке.
+    В обычной консоли / Celery worker с --pool=solo loop есть.
+    А вот в FastAPI синхронные эндпоинты работают в отдельных anyio worker threads,
+    и там loop приходится создавать руками — иначе падает
+    `RuntimeError: There is no current event loop in thread 'AnyIO worker thread'`.
+    """
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        # Нет loop'а в этом потоке — создаём и привязываем.
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
 def _make_client() -> TelegramClient:
     """Создаёт TelegramClient. Сессия читается из файла settings.telegram_session_name."""
+    _ensure_event_loop()
     return TelegramClient(
         settings.telegram_session_name,
         settings.telegram_api_id,
