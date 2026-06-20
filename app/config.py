@@ -11,13 +11,16 @@ class Settings(BaseSettings):
     # AI (OpenRouter / OpenAI-совместимый API)
     openai_api_key: str = ""
     openai_base_url: str = "https://openrouter.ai/api/v1"
-    openai_model: str = "deepseek/deepseek-chat-v3.1:free"
+    openai_model: str = "google/gemma-4-31b-it:free"
 
-    # Заглушки под Блок 5 (Telegram)
-    telegram_api_id: str = ""
+    # Telegram (Telethon — публикация от имени user-account)
+    telegram_api_id: int = 0
     telegram_api_hash: str = ""
+    telegram_phone: str = ""           # +7XXXXXXXXXX
+    telegram_channel: str = ""         # @username канала
+    telegram_session_name: str = "tg_session"
+    # Оставляем для обратной совместимости — пока не используется
     telegram_bot_token: str = ""
-    telegram_channel: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

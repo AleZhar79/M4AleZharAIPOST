@@ -28,7 +28,6 @@ Thumbs.db
 # Логи
 *.log
 
-notepad .gitignore
 # Celery beat schedule
 celerybeat-schedule
 celerybeat-schedule.db

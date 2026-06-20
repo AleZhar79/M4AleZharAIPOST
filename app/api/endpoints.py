@@ -243,13 +243,43 @@ def generate_async(news_id: int, db: Session = Depends(get_db)):
     return schemas.TaskScheduled(task_id=async_result.id)
 
 
-# ==================== PUBLISH (Блок 5, mock) ====================
+# ==================== PUBLISH (Блок 5) ====================
 @router.post("/publish/{post_id}", response_model=schemas.PostOut, tags=["publish"])
 def publish_post_endpoint(post_id: int, db: Session = Depends(get_db)):
-    """Mock — будет заменено в Блоке 5."""
+    """
+    Синхронная публикация: Telethon шлёт пост прямо в HTTP-запросе.
+    Ответ может висеть несколько секунд. Для прода — асинхронный вариант ниже.
+
+    ВАЖНО: перед первым вызовом запусти scripts/tg_login.py,
+    иначе Telethon попросит SMS-код через input() и зависнет.
+    """
     post = db.query(Post).get(post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
     publisher_publish_post(db, post)
     db.refresh(post)
     return post
+
+
+@router.post("/publish/run-async/{post_id}", response_model=schemas.TaskScheduled, tags=["publish"])
+def publish_post_async(post_id: int, db: Session = Depends(get_db)):
+    """Асинхронная публикация через Celery. Возвращает task_id для опроса."""
+    post = db.query(Post).get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    from app.tasks import publish_post_task
+    async_result = publish_post_task.apply_async(args=[post_id])
+    return schemas.TaskScheduled(task_id=async_result.id)
+
+
+# ==================== PIPELINE ====================
+@router.post("/pipeline/run-async", response_model=schemas.TaskScheduled, tags=["pipeline"])
+def pipeline_async():
+    """
+    Запускает полную цепочку: парсинг → генерация → публикация.
+    Удобно для ручной отладки end-to-end и для Beat'а.
+    """
+    from app.tasks import pipeline_task
+    async_result = pipeline_task.apply_async()
+    return schemas.TaskScheduled(task_id=async_result.id)
