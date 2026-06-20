@@ -5,13 +5,19 @@ class Settings(BaseSettings):
     # База данных
     database_url: str = "sqlite:///./aibot.db"
 
-    # Заглушки под будущие блоки (пока не используются)
+    # Очередь задач
+    redis_url: str = "redis://localhost:6379/0"
+
+    # AI (OpenRouter / OpenAI-совместимый API)
     openai_api_key: str = ""
+    openai_base_url: str = "https://openrouter.ai/api/v1"
+    openai_model: str = "deepseek/deepseek-chat-v3.1:free"
+
+    # Заглушки под Блок 5 (Telegram)
     telegram_api_id: str = ""
     telegram_api_hash: str = ""
     telegram_bot_token: str = ""
     telegram_channel: str = ""
-    redis_url: str = "redis://localhost:6379/0"
 
     model_config = SettingsConfigDict(
         env_file=".env",

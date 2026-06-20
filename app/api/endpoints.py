@@ -8,6 +8,7 @@ from app.models import Keyword, NewsItem, Post, Source
 from app.api import schemas
 from app.news_parser.service import run_parsing
 from app.ai.generator import generate_post_text
+from app.ai.openai_client import AIGenerationError
 from app.telegram.publisher import publish_post as publisher_publish_post
 
 router = APIRouter()
@@ -172,20 +173,13 @@ def get_news(news_id: int, db: Session = Depends(get_db)):
 # ==================== PARSING ====================
 @router.post("/parse/run", response_model=schemas.ParseResult, tags=["parser"])
 def parse_now(db: Session = Depends(get_db)):
-    """
-    Запускает парсинг ПРЯМО СЕЙЧАС, в текущем процессе FastAPI (синхронно).
-    Подходит для отладки. Для прода используй /parse/run-async.
-    """
+    """Парсинг синхронно в процессе FastAPI. Только для отладки."""
     return run_parsing(db)
 
 
 @router.post("/parse/run-async", response_model=schemas.TaskScheduled, tags=["parser"])
 def parse_async():
-    """
-    Кладёт задание парсинга в очередь Celery и сразу возвращает task_id.
-    Реальный парсинг выполнит celery worker в отдельном процессе.
-    Узнать результат — через GET /api/tasks/{task_id}.
-    """
+    """Кладёт парсинг в очередь Celery, возвращает task_id."""
     from app.tasks import parse_all_sources_task
     async_result = parse_all_sources_task.apply_async()
     return schemas.TaskScheduled(task_id=async_result.id)
@@ -193,10 +187,7 @@ def parse_async():
 
 @router.get("/tasks/{task_id}", response_model=schemas.TaskStatus, tags=["parser"])
 def task_status(task_id: str):
-    """
-    Статус и результат Celery-таска по его id.
-    state: PENDING (ещё не начат / неизвестен) / STARTED / SUCCESS / FAILURE.
-    """
+    """Статус Celery-таска: PENDING / STARTED / SUCCESS / FAILURE."""
     from celery_worker import celery_app
     async_result = celery_app.AsyncResult(task_id)
     result = None
@@ -210,18 +201,24 @@ def task_status(task_id: str):
     return schemas.TaskStatus(task_id=task_id, state=async_result.state, result=result)
 
 
-# ==================== AI GENERATION (Блок 4, mock) ====================
+# ==================== AI GENERATION (Блок 4) ====================
 @router.post("/generate/{news_id}", response_model=schemas.PostOut, tags=["generate"])
 def generate_for_news(news_id: int, db: Session = Depends(get_db)):
     """
-    Генерирует пост для конкретной новости и сохраняет в Post.
-    Сейчас под капотом mock OpenAI — текст всегда одинаковый.
+    Синхронная генерация: дёргает OpenRouter прямо в HTTP-запросе.
+    Удобно для отладки промпта, НО запрос будет висеть 5–30 секунд.
+    Для прода используй /api/generate/run-async/{news_id}.
     """
     news = db.query(NewsItem).get(news_id)
     if not news:
         raise HTTPException(status_code=404, detail="News not found")
 
-    text = generate_post_text(news)
+    try:
+        text = generate_post_text(news)
+    except AIGenerationError as e:
+        # 502 — "сторонний сервис нас подвёл"
+        raise HTTPException(status_code=502, detail=str(e))
+
     post = Post(news_id=news.id, generated_text=text, status="generated")
     db.add(post)
     db.commit()
@@ -229,13 +226,27 @@ def generate_for_news(news_id: int, db: Session = Depends(get_db)):
     return post
 
 
+@router.post("/generate/run-async/{news_id}", response_model=schemas.TaskScheduled, tags=["generate"])
+def generate_async(news_id: int, db: Session = Depends(get_db)):
+    """
+    Асинхронная генерация: кладёт задачу в Celery и сразу возвращает task_id.
+    Реальный результат — через GET /api/tasks/{task_id}.
+    """
+    # Проверяем, что новость существует — лучше вернуть 404 сразу,
+    # чем уже из воркера логом.
+    news = db.query(NewsItem).get(news_id)
+    if not news:
+        raise HTTPException(status_code=404, detail="News not found")
+
+    from app.tasks import generate_post_task
+    async_result = generate_post_task.apply_async(args=[news_id])
+    return schemas.TaskScheduled(task_id=async_result.id)
+
+
 # ==================== PUBLISH (Блок 5, mock) ====================
 @router.post("/publish/{post_id}", response_model=schemas.PostOut, tags=["publish"])
 def publish_post_endpoint(post_id: int, db: Session = Depends(get_db)):
-    """
-    Публикует пост в Telegram-канал.
-    Сейчас под капотом mock — сообщение печатается в консоль uvicorn.
-    """
+    """Mock — будет заменено в Блоке 5."""
     post = db.query(Post).get(post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
