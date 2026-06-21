@@ -28,9 +28,8 @@ Thumbs.db
 # Логи
 *.log
 
-# Celery beat schedule
-celerybeat-schedule
-celerybeat-schedule.db
+# Celery beat schedule (включая SQLite WAL/SHM)
+celerybeat-schedule*
 
 # Telethon session — это доступ к твоему аккаунту, НИКОГДА не коммить
 tg_session.session
