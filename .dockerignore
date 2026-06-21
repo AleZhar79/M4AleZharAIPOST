@@ -1,0 +1,33 @@
+# venv не нужен внутри образа — там свой питон
+venv/
+.venv/
+env/
+
+# Кэш питона
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Git
+.git/
+.gitignore
+
+# Секреты — НЕ должны попадать в образ
+.env
+
+# Локальная БД и сессия — монтируются как volume, не нужны в образе
+*.db
+*.session
+*.session-journal
+celerybeat-schedule*
+
+# Документация и временные файлы
+*.md
+!README.md
+*.log

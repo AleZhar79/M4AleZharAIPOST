@@ -1,0 +1,63 @@
+# 4 сервиса: redis, app, worker, beat
+# - app/worker/beat собираются из одного и того же Dockerfile (общий код)
+# - redis — официальный образ, никакой кастомизации
+# - aibot.db и tg_session.session живут в volume на хосте (./data),
+#   чтобы переживать пересоздание контейнеров
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: aibot_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    container_name: aibot_app
+    restart: unless-stopped
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      # Переопределяем REDIS_URL: внутри docker-сети redis доступен по имени сервиса
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      # БД и сессия Telethon — наружу, чтобы переживать пересборку
+      - ./data/aibot.db:/app/aibot.db
+      - ./data/tg_session.session:/app/tg_session.session
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build: .
+    container_name: aibot_worker
+    restart: unless-stopped
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data/aibot.db:/app/aibot.db
+      - ./data/tg_session.session:/app/tg_session.session
+    # В Linux-контейнере используем дефолтный prefork (--pool=solo нужен только на Windows)
+    command: celery -A celery_worker.celery_app worker --loglevel=info
+
+  beat:
+    build: .
+    container_name: aibot_beat
+    restart: unless-stopped
+    depends_on:
+      - redis
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data/aibot.db:/app/aibot.db
+      - ./data/tg_session.session:/app/tg_session.session
+    command: celery -A celery_worker.celery_app beat --loglevel=info

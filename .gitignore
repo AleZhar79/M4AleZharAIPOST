@@ -35,3 +35,6 @@ celerybeat-schedule*
 tg_session.session
 *.session
 *.session-journal
+
+# Данные для docker-compose (локальная БД, сессия)
+data/
